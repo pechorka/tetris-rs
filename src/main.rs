@@ -94,15 +94,17 @@ struct TetrisGame {
     placed_figures: Vec<Figure>,
     
     consts: Constants,
+    score: i32,
 }
 
 impl TetrisGame {
     fn new(consts: Constants) -> Self {
-        return  Self{
+        Self{
             active_figure: Figure::random(&consts),
             placed_figures: Vec::new(),
             consts,
-        };
+            score: 0,
+        }
     }
 
     fn move_active_figure(&mut self, rl: &RaylibHandle) {
@@ -128,6 +130,12 @@ impl TetrisGame {
     }
     fn draw_board(&self, d: &mut RaylibDrawHandle) {
         d.draw_rectangle_lines(self.consts.bx0, self.consts.by0, self.consts.bw, self.consts.bh, BOARD_COLOR);
+        {
+            let score_font_size: i32 = 20;
+            let score_x: i32 = self.consts.bx0;
+            let score_y: i32 = self.consts.by0 - score_font_size;
+            d.draw_text(&format!("Score {score}", score = self.score), score_x, score_y, score_font_size, Color::BLACK);
+        }
     }
 }
 
