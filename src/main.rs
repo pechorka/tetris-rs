@@ -82,53 +82,79 @@ impl Constants {
 
 struct TetrisGame {
     active_figure: Figure,
-    active_figure_loc: Vector2,
-    active_figure_animation_timer: f32,
-
     consts: Constants,
 }
 
 impl TetrisGame {
     fn new(consts: Constants) -> Self {
         return  Self{
-            active_figure: Figure::Square { color: Color::GREEN },
-            active_figure_loc: Vector2::new((consts.bx+consts.bw/2-consts.cw/2) as f32, consts.by as f32),
-            active_figure_animation_timer: 0.0,
+            active_figure: Figure::random(&consts),
             consts,
         };
     }
 
     fn move_active_figure(&mut self, rl: &RaylibHandle) {
-        if rl.is_key_pressed(KEY_A) {
-            self.active_figure_loc.x -= self.consts.cw as f32
-        } else if rl.is_key_pressed(KEY_D) {
-            self.active_figure_loc.x += self.consts.cw as f32
-        }
-
-        if self.active_figure_animation_timer > 0.0 {
-            self.active_figure_animation_timer -= rl.get_frame_time();
-        } else {
-            self.active_figure_loc.y += self.consts.ch as f32;
-            self.active_figure_animation_timer = 0.5;
-        }
+        self.active_figure.update_loc(&self.consts, rl);
     }
 
     fn draw_active_figure(&self, d: &mut RaylibDrawHandle) {
-        self.active_figure.draw(self.active_figure_loc, &self.consts, d)
+        self.active_figure.draw(&self.consts, d)
     }
     fn draw_board(&self, d: &mut RaylibDrawHandle) {
         d.draw_rectangle_lines(self.consts.bx, self.consts.by, self.consts.bw, self.consts.bh, BOARD_COLOR);
     }
 }
 
+struct FigureCommon {
+    loc: Vector2,
+    color: Color,
+    animation_timer: f32,
+}
+
+impl FigureCommon {
+    fn update_loc(&mut self, consts: &Constants, rl: &RaylibHandle) {
+        if rl.is_key_pressed(KEY_A) {
+            self.loc.x -= consts.cw as f32
+        } else if rl.is_key_pressed(KEY_D) {
+            self.loc.x += consts.cw as f32
+        }
+
+        if self.animation_timer > 0.0 {
+            self.animation_timer -= rl.get_frame_time();
+        } else {
+            self.loc.y += consts.ch as f32;
+            self.animation_timer = 0.5;
+        }
+    }
+}
+
 enum Figure {
-    Square {  color: Color },
+    Square {  c: FigureCommon },
 }
 
 impl Figure {
-    fn draw(&self, loc: Vector2, consts: &Constants, d: &mut RaylibDrawHandle) {
+    fn random(consts: &Constants) -> Self {
+        match rand::random::<u8>() % 1 {
+            0 => Self::Square {
+                c: FigureCommon {
+                    loc: Vector2::new((consts.bx+consts.bw/2-consts.cw/2) as f32, consts.by as f32),
+                    color: Color::GREEN,
+                    animation_timer: 0.0,
+                }
+            },
+            _ => panic!("Unknown figure type"),
+        }
+    }
+
+    fn update_loc(&mut self, consts: &Constants, rl: &RaylibHandle) {
         match self {
-            Self::Square { color } => {
+            Self::Square { c } => c.update_loc(consts, rl),
+        }
+    }
+
+    fn draw(&self, consts: &Constants, d: &mut RaylibDrawHandle) {
+        match self {
+            Self::Square { c: FigureCommon{loc, color,..} } => {
                 d.draw_rectangle_v(loc, Vector2::new(consts.cw as f32, consts.ch as f32), color);
             }
         }
