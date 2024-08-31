@@ -20,7 +20,9 @@ fn main() {
 
     while !rl.window_should_close() {
         game.consts.update(&mut rl);
-        game.move_active_figure(&rl);
+        if !game.game_over {
+            game.move_active_figure(&rl);
+        }
 
         let mut d = rl.begin_drawing(&thread);
 
@@ -28,6 +30,10 @@ fn main() {
 
         game.draw_board(&mut d);
         game.draw_figures(&mut d);
+
+        if game.game_over {
+            d.draw_text("Game Over", 100, 100, 50, Color::BLACK);
+        }
     }
 }
 
@@ -85,6 +91,8 @@ struct TetrisGame {
 
     consts: Constants,
     score: i32,
+
+    game_over: bool,
 }
 
 impl TetrisGame {
@@ -94,6 +102,7 @@ impl TetrisGame {
             placed_figures: Vec::new(),
             consts,
             score: 0,
+            game_over: false,
         }
     }
 
@@ -114,6 +123,10 @@ impl TetrisGame {
         }
 
         if self.active_collides_at(&next_loc) {
+            if cell_to_screen_y(self.active_figure.get_top_y(), &self.consts) <= self.consts.by0 {
+                self.game_over = true;
+                return;
+            }
             self.placed_figures.push(self.active_figure);
             self.active_figure = Figure::random();
         } else {
@@ -240,6 +253,12 @@ impl Figure {
         }
     }
 
+    fn get_top_y(&self) -> i32 {
+        match self {
+            Self::Square { c } => c.loc.y,
+        }
+    }
+
     fn set_loc(&mut self, loc: PositionOnBoard) {
         match self {
             Self::Square { c } => c.set_loc(loc),
@@ -269,8 +288,8 @@ impl Figure {
             Self::Square {
                 c: FigureCommon { loc, color, .. },
             } => {
-                let x = consts.bx0 + loc.x * consts.cw;
-                let y = consts.by0 + loc.y * consts.ch;
+                let x = cell_to_screen_x(loc.x, consts);
+                let y = cell_to_screen_y(loc.y, consts);
                 d.draw_rectangle(x, y, consts.cw, consts.ch, *color);
                 d.draw_rectangle_lines(x, y, consts.cw, consts.ch, Color::BLACK);
             }
@@ -287,6 +306,14 @@ impl Figure {
             ) => other_next_loc.x == loc.x && other_next_loc.y == loc.y,
         }
     }
+}
+
+fn cell_to_screen_x(cell_x: i32, consts: &Constants) -> i32 {
+    consts.bx0 + cell_x * consts.cw
+}
+
+fn cell_to_screen_y(cell_y: i32, consts: &Constants) -> i32 {
+    consts.by0 + cell_y * consts.ch
 }
 
 fn is_one_of_keys_pressed(rl: &RaylibHandle, keys: &[KeyboardKey]) -> bool {
