@@ -1,9 +1,14 @@
+use std::fmt::Pointer;
+
 use raylib::prelude::KeyboardKey::*;
 use raylib::prelude::*;
+
+const BACKGROUND_COLOR: Color = Color::WHITE;
 
 const BOARD_CELL_WIDTH: i32 = 11;
 const BOARD_CELL_HEIGHT: i32 = BOARD_CELL_WIDTH * 2;
 const BOARD_COLOR: Color = Color::RED;
+const BOARD_BACKGROUND_COLOR: Color = BACKGROUND_COLOR;
 
 const INITIAL_SCREEN_WIDTH: i32 = 1920;
 const INITIAL_SCREEN_HEIGHT: i32 = 1080;
@@ -26,7 +31,7 @@ fn main() {
 
         let mut d = rl.begin_drawing(&thread);
 
-        d.clear_background(Color::WHITE);
+        d.clear_background(BACKGROUND_COLOR);
 
         game.draw_board(&mut d);
         game.draw_figures(&mut d);
@@ -85,9 +90,34 @@ impl Constants {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct BoardCell {
+    color: Color,
+    loc: PositionOnBoard,
+    filled: bool,
+}
+
+impl BoardCell {
+    fn new(color: Color, loc: PositionOnBoard) -> Self {
+        return Self {
+            color,
+            loc,
+            filled: true,
+        };
+    }
+
+    fn zero() -> Self {
+        return Self {
+            color: BOARD_BACKGROUND_COLOR,
+            loc: PositionOnBoard::new(0, 0),
+            filled: false,
+        };
+    }
+}
+
 struct TetrisGame {
     active_figure: Figure,
-    placed_figures: Vec<Figure>,
+    placed_cells: Vec<Vec<BoardCell>>,
 
     consts: Constants,
     score: i32,
@@ -99,7 +129,10 @@ impl TetrisGame {
     fn new(consts: Constants) -> Self {
         Self {
             active_figure: Figure::random(),
-            placed_figures: Vec::new(),
+            placed_cells: vec![
+                vec![BoardCell::zero(); BOARD_CELL_WIDTH as usize];
+                BOARD_CELL_HEIGHT as usize
+            ],
             consts,
             score: 0,
             game_over: false,
@@ -107,27 +140,21 @@ impl TetrisGame {
     }
 
     fn move_active_figure(&mut self, rl: &RaylibHandle) {
-        let mut next_loc = self.active_figure.get_loc();
-        next_loc.x = self.active_figure.next_x(rl);
+        let mut next_loc = self.active_figure.move_h(rl);
 
-        if self.active_collides_at(&next_loc) {
-            next_loc.x = self.active_figure.get_loc().x;
+        if !self.collides_at(&next_loc) {
+            self.active_figure.set_loc(next_loc);
         }
 
-        next_loc.y = self.active_figure.next_y(rl);
+        next_loc = self.active_figure.move_v(rl);
 
-        if next_loc.y >= BOARD_CELL_HEIGHT {
-            self.placed_figures.push(self.active_figure);
-            self.active_figure = Figure::random();
-            return;
-        }
-
-        if self.active_collides_at(&next_loc) {
+        if self.collides_at(&next_loc) {
             if cell_to_screen_y(self.active_figure.get_top_y(), &self.consts) <= self.consts.by0 {
                 self.game_over = true;
                 return;
             }
-            self.placed_figures.push(self.active_figure);
+            self.place_active_figure();
+            self.clear_lines();
             self.active_figure = Figure::random();
         } else {
             self.active_figure.set_loc(next_loc);
@@ -135,17 +162,86 @@ impl TetrisGame {
         }
     }
 
-    fn active_collides_at(&self, loc: &PositionOnBoard) -> bool {
-        self.placed_figures
-            .iter()
-            .any(|f| f.collides_at(&self.active_figure, loc))
+    fn collides_at(&self, loc: &Vec<PositionOnBoard>) -> bool {
+        let bellow_board = loc.iter().any(|pb| pb.y >= BOARD_CELL_HEIGHT);
+        if bellow_board {
+            return true;
+        }
+        for row in &self.placed_cells {
+            for cell in row {
+                if loc.contains(&cell.loc) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    fn place_active_figure(&mut self) {
+        for loc in self.active_figure.get_loc() {
+            let x = loc.x as usize;
+            let y = loc.y as usize;
+            self.placed_cells[y][x] = BoardCell::new(self.active_figure.get_color(), loc);
+        }
+    }
+
+    fn clear_lines(&mut self) {
+        let mut lines_cleared = 0;
+
+        // First, identify and clear full lines
+        for y in (0..BOARD_CELL_HEIGHT as usize).rev() {
+            if self.placed_cells[y].iter().all(|bc| bc.filled) {
+                // Clear the line
+                self.placed_cells[y] = vec![BoardCell::zero(); BOARD_CELL_WIDTH as usize];
+                lines_cleared += 1;
+            }
+        }
+
+        if lines_cleared == 0 {
+            return;
+        }
+
+        // Update score
+        self.score += lines_cleared;
+
+        // Move remaining blocks down
+        for y in (0..BOARD_CELL_HEIGHT as usize).rev() {
+            if self.placed_cells[y].iter().all(|bc| !bc.filled) {
+                // Find the next non-empty row above
+                if let Some(next_filled_row) = (0..y)
+                    .rev()
+                    .find(|&i| self.placed_cells[i].iter().any(|bc| bc.filled))
+                {
+                    // Move the non-empty row down
+                    self.placed_cells[y] = self.placed_cells[next_filled_row].clone();
+                    self.placed_cells[next_filled_row] =
+                        vec![BoardCell::zero(); BOARD_CELL_WIDTH as usize];
+                } else {
+                    // If no more filled rows above, we're done
+                    break;
+                }
+            }
+        }
+
+        // Update positions of remaining cells
+        for y in 0..BOARD_CELL_HEIGHT as usize {
+            for x in 0..BOARD_CELL_WIDTH as usize {
+                if self.placed_cells[y][x].filled {
+                    self.placed_cells[y][x].loc = PositionOnBoard::new(x as i32, y as i32);
+                }
+            }
+        }
     }
 
     fn draw_figures(&self, d: &mut RaylibDrawHandle) {
         self.active_figure.draw(&self.consts, d);
 
-        for figure in &self.placed_figures {
-            figure.draw(&self.consts, d);
+        for row in &self.placed_cells {
+            for cell in row {
+                if cell.filled {
+                    draw_cell(&cell.loc, &self.consts, cell.color, d)
+                }
+            }
         }
     }
     fn draw_board(&self, d: &mut RaylibDrawHandle) {
@@ -171,7 +267,7 @@ impl TetrisGame {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 struct PositionOnBoard {
     x: i32,
     y: i32,
@@ -181,38 +277,68 @@ impl PositionOnBoard {
     fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
+
+    fn move_left(&self) -> Self {
+        return Self {
+            x: self.x - 1,
+            y: self.y,
+        };
+    }
+
+    fn move_right(&self) -> Self {
+        return Self {
+            x: self.x + 1,
+            y: self.y,
+        };
+    }
+
+    fn move_down(&self) -> Self {
+        return Self {
+            x: self.x,
+            y: self.y + 1,
+        };
+    }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct FigureCommon {
-    loc: PositionOnBoard,
+    loc: Vec<PositionOnBoard>,
     color: Color,
     animation_timer: f32,
 }
 
 impl FigureCommon {
-    fn next_x(&self, rl: &RaylibHandle) -> i32 {
-        let mut x = self.loc.x;
-        if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) && x > 0 {
-            x -= 1;
+    fn move_h(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
+        if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) {
+            return self
+                .loc
+                .iter()
+                .map(|p| if p.x > 0 { p.move_left() } else { *p })
+                .collect();
         }
-        if is_one_of_keys_pressed(rl, &[KEY_D, KEY_RIGHT]) && x < BOARD_CELL_WIDTH - 1 {
-            x += 1;
+        if is_one_of_keys_pressed(rl, &[KEY_D, KEY_RIGHT]) {
+            return self
+                .loc
+                .iter()
+                .map(|p| {
+                    if p.x < BOARD_CELL_WIDTH - 1 {
+                        p.move_right()
+                    } else {
+                        *p
+                    }
+                })
+                .collect();
         }
 
-        x
+        self.loc.clone()
     }
 
-    fn next_y(&self, rl: &RaylibHandle) -> i32 {
-        let mut y = self.loc.y;
-        if is_one_of_keys_down(rl, &[KEY_S, KEY_DOWN]) {
-            y += 1;
-        } else if self.animation_timer <= 0.0 {
-            // else if to prevent double speed
-            y += 1;
+    fn move_v(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
+        if is_one_of_keys_down(rl, &[KEY_S, KEY_DOWN]) || self.animation_timer <= 0.0 {
+            return self.loc.iter().map(|p| p.move_down()).collect();
         }
 
-        y
+        self.loc.clone()
     }
 
     fn update_timer(&mut self, dt: f32) {
@@ -223,12 +349,12 @@ impl FigureCommon {
         }
     }
 
-    fn set_loc(&mut self, loc: PositionOnBoard) {
+    fn set_loc(&mut self, loc: Vec<PositionOnBoard>) {
         self.loc = loc;
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 enum Figure {
     Square { c: FigureCommon },
 }
@@ -238,7 +364,7 @@ impl Figure {
         match rand::random::<u8>() % 1 {
             0 => Self::Square {
                 c: FigureCommon {
-                    loc: PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
+                    loc: vec![PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0)],
                     color: Color::GREEN,
                     animation_timer: 0.0,
                 },
@@ -247,33 +373,39 @@ impl Figure {
         }
     }
 
-    fn get_loc(&self) -> PositionOnBoard {
+    fn get_color(&self) -> Color {
         match self {
-            Self::Square { c } => c.loc,
+            Self::Square { c } => c.color,
+        }
+    }
+
+    fn get_loc(&self) -> Vec<PositionOnBoard> {
+        match self {
+            Self::Square { c } => c.loc.clone(),
         }
     }
 
     fn get_top_y(&self) -> i32 {
         match self {
-            Self::Square { c } => c.loc.y,
+            Self::Square { c } => top_y(&c.loc),
         }
     }
 
-    fn set_loc(&mut self, loc: PositionOnBoard) {
+    fn set_loc(&mut self, loc: Vec<PositionOnBoard>) {
         match self {
             Self::Square { c } => c.set_loc(loc),
         }
     }
 
-    fn next_x(&self, rl: &RaylibHandle) -> i32 {
+    fn move_v(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
         match self {
-            Self::Square { c } => c.next_x(rl),
+            Self::Square { c } => c.move_v(rl),
         }
     }
 
-    fn next_y(&self, rl: &RaylibHandle) -> i32 {
+    fn move_h(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
         match self {
-            Self::Square { c } => c.next_y(rl),
+            Self::Square { c } => c.move_h(rl),
         }
     }
 
@@ -288,24 +420,23 @@ impl Figure {
             Self::Square {
                 c: FigureCommon { loc, color, .. },
             } => {
-                let x = cell_to_screen_x(loc.x, consts);
-                let y = cell_to_screen_y(loc.y, consts);
-                d.draw_rectangle(x, y, consts.cw, consts.ch, *color);
-                d.draw_rectangle_lines(x, y, consts.cw, consts.ch, Color::BLACK);
+                for cell_loc in loc {
+                    draw_cell(cell_loc, consts, *color, d)
+                }
             }
         }
     }
+}
 
-    fn collides_at(&self, other: &Figure, other_next_loc: &PositionOnBoard) -> bool {
-        match (self, other) {
-            (
-                Self::Square {
-                    c: FigureCommon { loc, .. },
-                },
-                Self::Square { .. },
-            ) => other_next_loc.x == loc.x && other_next_loc.y == loc.y,
-        }
-    }
+fn top_y(loc: &Vec<PositionOnBoard>) -> i32 {
+    return loc.iter().map(|p| p.y).max().unwrap_or(BOARD_CELL_HEIGHT);
+}
+
+fn draw_cell(loc: &PositionOnBoard, consts: &Constants, color: Color, d: &mut RaylibDrawHandle) {
+    let x = cell_to_screen_x(loc.x, consts);
+    let y = cell_to_screen_y(loc.y, consts);
+    d.draw_rectangle(x, y, consts.cw, consts.ch, color);
+    d.draw_rectangle_lines(x, y, consts.cw, consts.ch, Color::BLACK);
 }
 
 fn cell_to_screen_x(cell_x: i32, consts: &Constants) -> i32 {
