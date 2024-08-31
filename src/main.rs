@@ -1,5 +1,5 @@
-use raylib::prelude::*;
 use raylib::prelude::KeyboardKey::*;
+use raylib::prelude::*;
 
 const BOARD_CELL_WIDTH: i32 = 11;
 const BOARD_CELL_HEIGHT: i32 = BOARD_CELL_WIDTH * 2;
@@ -7,8 +7,6 @@ const BOARD_COLOR: Color = Color::RED;
 
 const INITIAL_SCREEN_WIDTH: i32 = 1920;
 const INITIAL_SCREEN_HEIGHT: i32 = 1080;
-
-const EPS: f32 = 0.0001;
 
 fn main() {
     let (mut rl, thread) = raylib::init()
@@ -27,12 +25,11 @@ fn main() {
         let mut d = rl.begin_drawing(&thread);
 
         d.clear_background(Color::WHITE);
-        
+
         game.draw_board(&mut d);
         game.draw_figures(&mut d);
     }
 }
-
 
 struct Constants {
     sw: i32,
@@ -41,13 +38,10 @@ struct Constants {
     cw: i32,
     ch: i32,
 
-    
     bw: i32,
     bh: i32,
     bx0: i32,
     by0: i32,
-    bx1: i32,
-    by1: i32,
 }
 
 impl Constants {
@@ -59,8 +53,6 @@ impl Constants {
             ch: 0,
             bx0: 0,
             by0: 0,
-            bx1: 0,
-            by1: 0,
             bw: 0,
             bh: 0,
         };
@@ -68,7 +60,7 @@ impl Constants {
         instance
     }
 
-    fn update(&mut self, rl:&mut  RaylibHandle) {
+    fn update(&mut self, rl: &mut RaylibHandle) {
         self.sw = rl.get_screen_width();
         self.sh = rl.get_screen_height();
         self.recalculate();
@@ -77,30 +69,28 @@ impl Constants {
     fn recalculate(&mut self) {
         let cell_size = 50;
         self.cw = self.sw / cell_size;
-        self.ch = self.sh / (cell_size / (BOARD_CELL_HEIGHT/BOARD_CELL_WIDTH));
+        self.ch = self.sh / (cell_size / (BOARD_CELL_HEIGHT / BOARD_CELL_WIDTH));
 
         self.bw = self.cw * BOARD_CELL_WIDTH;
         self.bh = self.ch * BOARD_CELL_HEIGHT;
-        
+
         self.bx0 = self.sw / 2 - self.bw / 2;
         self.by0 = 100;
-        self.bx1 = self.bx0 + self.bw;
-        self.by1 = self.by0 + self.bh;
     }
 }
 
 struct TetrisGame {
     active_figure: Figure,
     placed_figures: Vec<Figure>,
-    
+
     consts: Constants,
     score: i32,
 }
 
 impl TetrisGame {
     fn new(consts: Constants) -> Self {
-        Self{
-            active_figure: Figure::random(&consts),
+        Self {
+            active_figure: Figure::random(),
             placed_figures: Vec::new(),
             consts,
             score: 0,
@@ -108,16 +98,25 @@ impl TetrisGame {
     }
 
     fn move_active_figure(&mut self, rl: &RaylibHandle) {
-        let next_loc = self.active_figure.next_loc(&self.consts, rl);
+        let next_loc = self.active_figure.next_loc(rl);
 
-        let active_with_next_loc = self.active_figure.copy_with_loc(next_loc);
-        // TODO: sometimes figure goes below the board, fix it
-        if float_gte(next_loc.y, self.consts.by1 as f32) || self.placed_figures.iter().any(|f| f.collides(&active_with_next_loc)) {
+        if next_loc.y >= BOARD_CELL_HEIGHT {
             self.placed_figures.push(self.active_figure);
+            self.active_figure = Figure::random();
+            return;
+        }
 
-            self.active_figure = Figure::random(&self.consts);
+        let collides_at_new = self
+            .placed_figures
+            .iter()
+            .any(|f| f.collides_at(&self.active_figure, &next_loc));
+
+        if collides_at_new {
+            self.placed_figures.push(self.active_figure);
+            self.active_figure = Figure::random();
         } else {
-            self.active_figure.update_loc(&self.consts, rl);
+            self.active_figure.set_loc(next_loc);
+            self.active_figure.update_timer(rl.get_frame_time());
         }
     }
 
@@ -129,118 +128,136 @@ impl TetrisGame {
         }
     }
     fn draw_board(&self, d: &mut RaylibDrawHandle) {
-        d.draw_rectangle_lines(self.consts.bx0, self.consts.by0, self.consts.bw, self.consts.bh, BOARD_COLOR);
+        d.draw_rectangle_lines(
+            self.consts.bx0,
+            self.consts.by0,
+            self.consts.bw,
+            self.consts.bh,
+            BOARD_COLOR,
+        );
         {
             let score_font_size: i32 = 20;
             let score_x: i32 = self.consts.bx0;
             let score_y: i32 = self.consts.by0 - score_font_size;
-            d.draw_text(&format!("Score {score}", score = self.score), score_x, score_y, score_font_size, Color::BLACK);
+            d.draw_text(
+                &format!("Score {score}", score = self.score),
+                score_x,
+                score_y,
+                score_font_size,
+                Color::BLACK,
+            );
         }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
+struct PositionOnBoard {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Debug, Copy, Clone)]
 struct FigureCommon {
-    loc: Vector2,
+    loc: PositionOnBoard,
     color: Color,
     animation_timer: f32,
 }
 
 impl FigureCommon {
-    fn next_loc(&self, consts: &Constants, rl: &RaylibHandle) -> Vector2{
+    fn next_loc(&self, rl: &RaylibHandle) -> PositionOnBoard {
         let mut loc = self.loc;
-        if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) && float_gte(self.loc.x - consts.cw as f32, consts.bx0 as f32) {
-            loc.x -= consts.cw as f32
-        } 
-        if is_one_of_keys_pressed(rl, &[KEY_D, KEY_RIGHT]) && ((self.loc.x + consts.cw as f32) < consts.bx1 as f32) {
-            loc.x += consts.cw as f32
+        if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) && loc.x > 0 {
+            loc.x -= 1;
+        }
+        if is_one_of_keys_pressed(rl, &[KEY_D, KEY_RIGHT]) && loc.x < BOARD_CELL_WIDTH - 1 {
+            loc.x += 1;
         }
         if is_one_of_keys_down(rl, &[KEY_S, KEY_DOWN]) {
-            loc.y += consts.ch as f32
-        }
-
-        if self.animation_timer <= 0.0 {
-            loc.y += consts.ch as f32;
+            loc.y += 1;
+        } else if self.animation_timer <= 0.0 {
+            // else if to prevent double speed
+            loc.y += 1;
         }
 
         loc
     }
 
-    fn update_loc(&mut self, consts: &Constants, rl: &RaylibHandle) {
-        self.animation_timer -= rl.get_frame_time();
-        self.loc = self.next_loc(consts, rl);
+    fn update_timer(&mut self, dt: f32) {
         if self.animation_timer <= 0.0 {
             self.animation_timer = 0.5;
+        } else {
+            self.animation_timer -= dt;
         }
+    }
+
+    fn set_loc(&mut self, loc: PositionOnBoard) {
+        self.loc = loc;
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 enum Figure {
-    Square {  c: FigureCommon },
+    Square { c: FigureCommon },
 }
 
 impl Figure {
-    fn random(consts: &Constants) -> Self {
+    fn random() -> Self {
         match rand::random::<u8>() % 1 {
             0 => Self::Square {
                 c: FigureCommon {
-                    loc: Vector2::new((consts.bx0+consts.bw/2-consts.cw/2) as f32, consts.by0 as f32),
+                    loc: PositionOnBoard {
+                        x: BOARD_CELL_WIDTH / 2,
+                        y: 0,
+                    },
                     color: Color::GREEN,
                     animation_timer: 0.0,
-                }
+                },
             },
             _ => panic!("Unknown figure type"),
         }
     }
 
-    fn copy_with_loc(&self, loc: Vector2) -> Self {
+    fn next_loc(&self, rl: &RaylibHandle) -> PositionOnBoard {
         match self {
-            Self::Square { c } => Self::Square {
-                c: FigureCommon {
-                    loc,
-                    ..*c
-                }
-            },
+            Self::Square { c } => c.next_loc(rl),
         }
     }
 
-    fn next_loc(&self, consts: &Constants, rl: &RaylibHandle) -> Vector2 {
+    fn set_loc(&mut self, loc: PositionOnBoard) {
         match self {
-            Self::Square { c } => c.next_loc(consts, rl),
+            Self::Square { c } => c.set_loc(loc),
         }
     }
 
-    fn update_loc(&mut self, consts: &Constants, rl: &RaylibHandle) {
+    fn update_timer(&mut self, dt: f32) {
         match self {
-            Self::Square { c } => c.update_loc(consts, rl),
+            Self::Square { c } => c.update_timer(dt),
         }
     }
 
     fn draw(&self, consts: &Constants, d: &mut RaylibDrawHandle) {
         match self {
-            Self::Square { c: FigureCommon{loc, color,..} } => {
-                d.draw_rectangle_v(loc, Vector2::new(consts.cw as f32, consts.ch as f32), color);
-                d.draw_rectangle_lines_ex(Rectangle::new(loc.x, loc.y, consts.cw as f32, consts.ch as f32), 2.0, Color::BLACK);
+            Self::Square {
+                c: FigureCommon { loc, color, .. },
+            } => {
+                let x = consts.bx0 + loc.x * consts.cw;
+                let y = consts.by0 + loc.y * consts.ch;
+                d.draw_rectangle(x, y, consts.cw, consts.ch, *color);
+                d.draw_rectangle_lines(x, y, consts.cw, consts.ch, Color::BLACK);
             }
         }
     }
 
-    fn collides(&self, other: &Figure) -> bool {
+    fn collides_at(&self, other: &Figure, other_next_loc: &PositionOnBoard) -> bool {
         match (self, other) {
-            (Self::Square { c: FigureCommon{loc: loc1, ..} }, Self::Square { c: FigureCommon{loc: loc2, ..} }) => {
-                float_eq(loc1.x, loc2.x) && float_eq(loc1.y, loc2.y)
-            }
+            (
+                Self::Square {
+                    c: FigureCommon { loc, .. },
+                },
+                Self::Square { .. },
+            ) => other_next_loc.x == loc.x && other_next_loc.y == loc.y,
         }
     }
-}
-
-fn float_eq(a: f32, b: f32) -> bool {
-    (a - b).abs() < EPS
-}
-
-fn float_gte(a: f32, b: f32) -> bool {
-    a > b || float_eq(a, b)
 }
 
 fn is_one_of_keys_pressed(rl: &RaylibHandle, keys: &[KeyboardKey]) -> bool {
