@@ -98,7 +98,14 @@ impl TetrisGame {
     }
 
     fn move_active_figure(&mut self, rl: &RaylibHandle) {
-        let next_loc = self.active_figure.next_loc(rl);
+        let mut next_loc = self.active_figure.get_loc();
+        next_loc.x = self.active_figure.next_x(rl);
+
+        if self.active_collides_at(&next_loc) {
+            next_loc.x = self.active_figure.get_loc().x;
+        }
+
+        next_loc.y = self.active_figure.next_y(rl);
 
         if next_loc.y >= BOARD_CELL_HEIGHT {
             self.placed_figures.push(self.active_figure);
@@ -106,18 +113,19 @@ impl TetrisGame {
             return;
         }
 
-        let collides_at_new = self
-            .placed_figures
-            .iter()
-            .any(|f| f.collides_at(&self.active_figure, &next_loc));
-
-        if collides_at_new {
+        if self.active_collides_at(&next_loc) {
             self.placed_figures.push(self.active_figure);
             self.active_figure = Figure::random();
         } else {
             self.active_figure.set_loc(next_loc);
             self.active_figure.update_timer(rl.get_frame_time());
         }
+    }
+
+    fn active_collides_at(&self, loc: &PositionOnBoard) -> bool {
+        self.placed_figures
+            .iter()
+            .any(|f| f.collides_at(&self.active_figure, loc))
     }
 
     fn draw_figures(&self, d: &mut RaylibDrawHandle) {
@@ -156,6 +164,12 @@ struct PositionOnBoard {
     y: i32,
 }
 
+impl PositionOnBoard {
+    fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 struct FigureCommon {
     loc: PositionOnBoard,
@@ -164,22 +178,28 @@ struct FigureCommon {
 }
 
 impl FigureCommon {
-    fn next_loc(&self, rl: &RaylibHandle) -> PositionOnBoard {
-        let mut loc = self.loc;
-        if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) && loc.x > 0 {
-            loc.x -= 1;
+    fn next_x(&self, rl: &RaylibHandle) -> i32 {
+        let mut x = self.loc.x;
+        if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) && x > 0 {
+            x -= 1;
         }
-        if is_one_of_keys_pressed(rl, &[KEY_D, KEY_RIGHT]) && loc.x < BOARD_CELL_WIDTH - 1 {
-            loc.x += 1;
-        }
-        if is_one_of_keys_down(rl, &[KEY_S, KEY_DOWN]) {
-            loc.y += 1;
-        } else if self.animation_timer <= 0.0 {
-            // else if to prevent double speed
-            loc.y += 1;
+        if is_one_of_keys_pressed(rl, &[KEY_D, KEY_RIGHT]) && x < BOARD_CELL_WIDTH - 1 {
+            x += 1;
         }
 
-        loc
+        x
+    }
+
+    fn next_y(&self, rl: &RaylibHandle) -> i32 {
+        let mut y = self.loc.y;
+        if is_one_of_keys_down(rl, &[KEY_S, KEY_DOWN]) {
+            y += 1;
+        } else if self.animation_timer <= 0.0 {
+            // else if to prevent double speed
+            y += 1;
+        }
+
+        y
     }
 
     fn update_timer(&mut self, dt: f32) {
@@ -205,10 +225,7 @@ impl Figure {
         match rand::random::<u8>() % 1 {
             0 => Self::Square {
                 c: FigureCommon {
-                    loc: PositionOnBoard {
-                        x: BOARD_CELL_WIDTH / 2,
-                        y: 0,
-                    },
+                    loc: PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
                     color: Color::GREEN,
                     animation_timer: 0.0,
                 },
@@ -217,15 +234,27 @@ impl Figure {
         }
     }
 
-    fn next_loc(&self, rl: &RaylibHandle) -> PositionOnBoard {
+    fn get_loc(&self) -> PositionOnBoard {
         match self {
-            Self::Square { c } => c.next_loc(rl),
+            Self::Square { c } => c.loc,
         }
     }
 
     fn set_loc(&mut self, loc: PositionOnBoard) {
         match self {
             Self::Square { c } => c.set_loc(loc),
+        }
+    }
+
+    fn next_x(&self, rl: &RaylibHandle) -> i32 {
+        match self {
+            Self::Square { c } => c.next_x(rl),
+        }
+    }
+
+    fn next_y(&self, rl: &RaylibHandle) -> i32 {
+        match self {
+            Self::Square { c } => c.next_y(rl),
         }
     }
 
