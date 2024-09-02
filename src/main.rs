@@ -1,5 +1,3 @@
-use std::fmt::Pointer;
-
 use raylib::prelude::KeyboardKey::*;
 use raylib::prelude::*;
 
@@ -178,10 +176,10 @@ impl TetrisGame {
     }
 
     fn place_active_figure(&mut self) {
-        for loc in self.active_figure.get_loc() {
+        for loc in &self.active_figure.loc {
             let x = loc.x as usize;
             let y = loc.y as usize;
-            self.placed_cells[y][x] = BoardCell::new(self.active_figure.get_color(), loc);
+            self.placed_cells[y][x] = BoardCell::new(self.active_figure.color, *loc);
         }
     }
 
@@ -301,13 +299,25 @@ impl PositionOnBoard {
 }
 
 #[derive(Debug, Clone)]
-struct FigureCommon {
+struct Figure {
     loc: Vec<PositionOnBoard>,
     color: Color,
     animation_timer: f32,
 }
 
-impl FigureCommon {
+impl Figure {
+    fn random() -> Self {
+        match rand::random::<u8>() % 1 {
+            0 => Self {
+                // square
+                loc: vec![PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0)],
+                color: Color::GREEN,
+                animation_timer: 0.0,
+            },
+            _ => panic!("Unknown figure type"),
+        }
+    }
+
     fn move_h(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
         if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) {
             return self
@@ -352,84 +362,20 @@ impl FigureCommon {
     fn set_loc(&mut self, loc: Vec<PositionOnBoard>) {
         self.loc = loc;
     }
-}
-
-#[derive(Debug, Clone)]
-enum Figure {
-    Square { c: FigureCommon },
-}
-
-impl Figure {
-    fn random() -> Self {
-        match rand::random::<u8>() % 1 {
-            0 => Self::Square {
-                c: FigureCommon {
-                    loc: vec![PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0)],
-                    color: Color::GREEN,
-                    animation_timer: 0.0,
-                },
-            },
-            _ => panic!("Unknown figure type"),
-        }
-    }
-
-    fn get_color(&self) -> Color {
-        match self {
-            Self::Square { c } => c.color,
-        }
-    }
-
-    fn get_loc(&self) -> Vec<PositionOnBoard> {
-        match self {
-            Self::Square { c } => c.loc.clone(),
-        }
-    }
 
     fn get_top_y(&self) -> i32 {
-        match self {
-            Self::Square { c } => top_y(&c.loc),
-        }
-    }
-
-    fn set_loc(&mut self, loc: Vec<PositionOnBoard>) {
-        match self {
-            Self::Square { c } => c.set_loc(loc),
-        }
-    }
-
-    fn move_v(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
-        match self {
-            Self::Square { c } => c.move_v(rl),
-        }
-    }
-
-    fn move_h(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
-        match self {
-            Self::Square { c } => c.move_h(rl),
-        }
-    }
-
-    fn update_timer(&mut self, dt: f32) {
-        match self {
-            Self::Square { c } => c.update_timer(dt),
-        }
+        self.loc
+            .iter()
+            .map(|pb| pb.y)
+            .max()
+            .unwrap_or(BOARD_CELL_HEIGHT)
     }
 
     fn draw(&self, consts: &Constants, d: &mut RaylibDrawHandle) {
-        match self {
-            Self::Square {
-                c: FigureCommon { loc, color, .. },
-            } => {
-                for cell_loc in loc {
-                    draw_cell(cell_loc, consts, *color, d)
-                }
-            }
+        for cell_loc in &self.loc {
+            draw_cell(cell_loc, consts, self.color, d)
         }
     }
-}
-
-fn top_y(loc: &Vec<PositionOnBoard>) -> i32 {
-    return loc.iter().map(|p| p.y).max().unwrap_or(BOARD_CELL_HEIGHT);
 }
 
 fn draw_cell(loc: &PositionOnBoard, consts: &Constants, color: Color, d: &mut RaylibDrawHandle) {
