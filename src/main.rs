@@ -3,7 +3,7 @@ use raylib::prelude::*;
 
 const BACKGROUND_COLOR: Color = Color::WHITE;
 
-const BOARD_CELL_WIDTH: i32 = 11;
+const BOARD_CELL_WIDTH: i32 = 10;
 const BOARD_CELL_HEIGHT: i32 = BOARD_CELL_WIDTH * 2;
 const BOARD_COLOR: Color = Color::RED;
 const BOARD_BACKGROUND_COLOR: Color = BACKGROUND_COLOR;
@@ -309,21 +309,88 @@ struct Figure {
 
 impl Figure {
     fn random() -> Self {
-        match rand::random::<u8>() % 2 {
+        match rand::random::<u8>() % 7 {
             0 => Self {
-                // square
-                loc: vec![PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0)],
-                color: Color::GREEN,
+                // ##
+                // ##
+                loc: vec![
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 0),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 1),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 1),
+                ],
+                color: Color::GOLD,
                 animation_timer: 0.0,
             },
             1 => Self {
-                // line
+                // ####
                 loc: vec![
                     PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 0),
                     PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
                     PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 2, 0),
                 ],
-                color: Color::GREEN,
+                color: Color::TEAL,
+                animation_timer: 0.0,
+            },
+            2 => Self {
+                //  #
+                // ###
+                loc: vec![
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 1),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 1),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 1),
+                ],
+                color: Color::NAVY,
+                animation_timer: 0.0,
+            },
+            3 => Self {
+                //   #
+                // ###
+                loc: vec![
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 1),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 1),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 1),
+                ],
+                color: Color::YELLOWGREEN,
+                animation_timer: 0.0,
+            },
+            4 => Self {
+                // #
+                // ###
+                loc: vec![
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 1),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 1),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 1),
+                ],
+                color: Color::DARKGREEN,
+                animation_timer: 0.0,
+            },
+            5 => Self {
+                // ##
+                //  ##
+                loc: vec![
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 0),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 1),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 1),
+                ],
+                color: Color::DARKMAGENTA,
+                animation_timer: 0.0,
+            },
+            6 => Self {
+                //  ##
+                // ##
+                loc: vec![
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 1),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 1),
+                ],
+                color: Color::BLUEVIOLET,
                 animation_timer: 0.0,
             },
             _ => panic!("Unknown figure type"),
