@@ -161,8 +161,10 @@ impl TetrisGame {
     }
 
     fn collides_at(&self, loc: &Vec<PositionOnBoard>) -> bool {
-        let bellow_board = loc.iter().any(|pb| pb.y >= BOARD_CELL_HEIGHT);
-        if bellow_board {
+        let outside_of_board = loc
+            .iter()
+            .any(|pb| pb.y >= BOARD_CELL_HEIGHT || pb.x < 0 || pb.x >= BOARD_CELL_WIDTH);
+        if outside_of_board {
             return true;
         }
         for row in &self.placed_cells {
@@ -307,10 +309,20 @@ struct Figure {
 
 impl Figure {
     fn random() -> Self {
-        match rand::random::<u8>() % 1 {
+        match rand::random::<u8>() % 2 {
             0 => Self {
                 // square
                 loc: vec![PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0)],
+                color: Color::GREEN,
+                animation_timer: 0.0,
+            },
+            1 => Self {
+                // line
+                loc: vec![
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) - 1, 0),
+                    PositionOnBoard::new(BOARD_CELL_WIDTH / 2, 0),
+                    PositionOnBoard::new((BOARD_CELL_WIDTH / 2) + 1, 0),
+                ],
                 color: Color::GREEN,
                 animation_timer: 0.0,
             },
@@ -320,24 +332,10 @@ impl Figure {
 
     fn move_h(&self, rl: &RaylibHandle) -> Vec<PositionOnBoard> {
         if is_one_of_keys_pressed(rl, &[KEY_A, KEY_LEFT]) {
-            return self
-                .loc
-                .iter()
-                .map(|p| if p.x > 0 { p.move_left() } else { *p })
-                .collect();
+            return self.loc.iter().map(|p| p.move_left()).collect();
         }
         if is_one_of_keys_pressed(rl, &[KEY_D, KEY_RIGHT]) {
-            return self
-                .loc
-                .iter()
-                .map(|p| {
-                    if p.x < BOARD_CELL_WIDTH - 1 {
-                        p.move_right()
-                    } else {
-                        *p
-                    }
-                })
-                .collect();
+            return self.loc.iter().map(|p| p.move_right()).collect();
         }
 
         self.loc.clone()
